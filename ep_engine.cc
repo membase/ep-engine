@@ -459,7 +459,6 @@ extern "C" {
                                      const void *cookie,
                                      ADD_RESPONSE response) {
         protocol_binary_request_no_extras *req = (protocol_binary_request_no_extras*) request;
-        protocol_binary_response_status res = PROTOCOL_BINARY_RESPONSE_SUCCESS;
         off_t offset = sizeof(req->message.header);
 
         void *data = e->getServerApi()->cookie->get_engine_specific(cookie);
@@ -511,7 +510,7 @@ extern "C" {
             response(NULL, 0, NULL, 0,
                      body.c_str(), static_cast<uint16_t>(body.length()),
                      PROTOCOL_BINARY_RAW_BYTES,
-                     static_cast<uint16_t>(res), 0, cookie);
+                     PROTOCOL_BINARY_RESPONSE_SUCCESS, 0, cookie);
 
             return ENGINE_SUCCESS;
         }
@@ -522,6 +521,17 @@ extern "C" {
         memcpy(&flags, ((char *) request) + offset, sizeof(uint32_t));
         flags = ntohl(flags);
         offset += sizeof(uint32_t);
+
+        uint8_t replicas;
+        sync_type_t syncType;
+        bool validFlags =
+            EventuallyPersistentEngine::parseSyncOptions(flags, &syncType, &replicas);
+
+        if (!validFlags) {
+            response(NULL, 0, NULL, 0, "", 0, PROTOCOL_BINARY_RAW_BYTES,
+                     PROTOCOL_BINARY_RESPONSE_EINVAL, 0, cookie);
+            return ENGINE_EINVAL;
+        }
 
         // number of keys in the request, 16 bits
         uint16_t nkeys;
@@ -560,7 +570,7 @@ extern "C" {
             keyset.insert(keyspec);
         }
 
-        e->sync(keyset, cookie, flags);
+        e->sync(keyset, cookie, syncType, replicas);
 
         return ENGINE_EWOULDBLOCK;
     }
@@ -3143,11 +3153,47 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::touch(const void *cookie,
 
 void EventuallyPersistentEngine::sync(std::set<key_spec_t> keys,
                                       const void *cookie,
-                                      uint32_t flags) {
+                                      sync_type_t syncType,
+                                      uint8_t replicas) {
     // TODO: deal with non-zero key CAS
     // TODO: deal with non-existent keys
 
-    SyncListener *syncListener = new SyncListener(*this, cookie, keys, flags);
+    SyncListener *syncListener = new SyncListener(*this, cookie,
+                                                  keys, syncType, replicas);
 
     syncRegistry.addPersistenceListener(syncListener);
+}
+
+bool EventuallyPersistentEngine::parseSyncOptions(uint32_t flags,
+                                                  sync_type_t *syncType,
+                                                  uint8_t *replicas) {
+    *replicas = (uint8_t) ((flags & 0xf0) >> 4);
+    bool syncRep = (*replicas > 0);
+    bool syncPersist = ((flags & 0x8) == 0x8);
+    bool syncMutation = ((flags & 0x4) == 0x4);
+
+    if ((syncPersist && syncMutation) ||
+        (syncRep && syncMutation)) {
+        return false;
+    }
+
+    if (syncPersist && !syncRep) {
+        *syncType = PERSIST;
+    } else if (!syncPersist && syncRep) {
+        *syncType = REP;
+    } else if (syncPersist && syncRep) {
+        if (flags & 0x2) {
+            *syncType = REP_AND_PERSIST;
+        } else {
+            *syncType = REP_OR_PERSIST;
+        }
+    } else if (syncMutation) {
+        *syncType = MUTATION;
+    } else {
+        // No flags set at all or only the reserved bits
+        // are used (ignore them for now).
+        return false;
+    }
+
+    return true;
 }

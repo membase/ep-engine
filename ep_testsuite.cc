@@ -3782,6 +3782,38 @@ create_sync_packet(uint32_t flags, uint16_t nkeys, const key_spec_t keyspecs[]) 
     return req;
 }
 
+static enum test_result test_sync_bad_flags(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
+    const key_spec_t keyspecs[] = { {0, 0, "key1"}, {0, 0, "key2"} };
+    const uint16_t nkeys = 2;
+    protocol_binary_request_header *pkt;
+
+    // persistence and mutation bits both set
+    pkt = create_sync_packet(0x0000000c, nkeys, keyspecs);
+
+    check(h1->unknown_command(h, NULL, pkt, add_response) == ENGINE_EINVAL, "sync fail");
+    check(last_status == PROTOCOL_BINARY_RESPONSE_EINVAL, "sync fail");
+
+    free(pkt);
+
+    // no flags set
+    pkt = create_sync_packet(0x00000000, nkeys, keyspecs);
+
+    check(h1->unknown_command(h, NULL, pkt, add_response) == ENGINE_EINVAL, "sync fail");
+    check(last_status == PROTOCOL_BINARY_RESPONSE_EINVAL, "sync fail");
+
+    free(pkt);
+
+    // 3 replicas plus mutation flag set
+    pkt = create_sync_packet(0x00000034, nkeys, keyspecs);
+
+    check(h1->unknown_command(h, NULL, pkt, add_response) == ENGINE_EINVAL, "sync fail");
+    check(last_status == PROTOCOL_BINARY_RESPONSE_EINVAL, "sync fail");
+
+    free(pkt);
+
+    return SUCCESS;
+}
+
 static enum test_result test_sync_persistence(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
     const key_spec_t keyspecs[] = {
         {0, 0, "key1"}, {0, 0, "key2"}, {0, 0, "key3"},
@@ -4082,6 +4114,7 @@ engine_test_t* get_tests(void) {
          NULL, teardown, NULL},
         {"test vbucket destroy restart", test_vbucket_destroy_restart,
          NULL, teardown, NULL},
+        {"sync bad flags", test_sync_bad_flags, NULL, teardown, NULL},
         {"sync persistence", test_sync_persistence, NULL, teardown, NULL},
         {NULL, NULL, NULL, NULL, NULL}
     };
