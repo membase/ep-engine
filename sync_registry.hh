@@ -24,6 +24,23 @@
 #include "mutex.hh"
 #include "queueditem.hh"
 
+typedef struct key_spec_t {
+    uint64_t cas;
+    uint16_t vbucketid;
+    std::string key;
+    bool operator<(const key_spec_t &other) const {
+        return (key < other.key) || ((key == other.key) && (vbucketid < other.vbucketid));
+    }
+} key_spec_t;
+
+typedef enum {
+    PERSIST,
+    MUTATION,
+    REP,
+    REP_OR_PERSIST,
+    REP_AND_PERSIST
+} sync_type_t;
+
 
 class EventuallyPersistentEngine;
 class SyncListener;
@@ -37,7 +54,7 @@ public:
     SyncRegistry() {
     }
 
-    void addPersistenceListener(const SyncListener &syncListener);
+    void addPersistenceListener(SyncListener *syncListener);
     void itemPersisted(const QueuedItem &item);
     void itemsPersisted(std::list<QueuedItem> &itemlist);
 
@@ -45,7 +62,7 @@ private:
 
     void notifyListeners(const QueuedItem &item);
 
-    std::list<SyncListener> persistenceListeners;
+    std::list<SyncListener*> persistenceListeners;
     Mutex mutex;
 
     DISALLOW_COPY_AND_ASSIGN(SyncRegistry);
@@ -56,18 +73,25 @@ class SyncListener {
 public:
 
     SyncListener(EventuallyPersistentEngine &epEngine, const void *c,
-                 const std::set<KeySpec> &keys)
-        : engine(epEngine), cookie(c), keySpecs(keys), syncedKeys(0) {
+                 const std::set<key_spec_t> &keys, uint32_t flags);
+
+    bool keySynced(key_spec_t &keyspec);
+
+    sync_type_t getSyncType() const {
+        return syncType;
     }
 
-    bool keySynced(const KeySpec &keyspec);
+    std::set<key_spec_t>& getPersistedKeys() {
+        return persistedKeys;
+    }
 
 private:
 
     EventuallyPersistentEngine   &engine;
     const void                   *cookie;
-    const std::set<KeySpec>      keySpecs;
-    size_t                       syncedKeys;
+    std::set<key_spec_t>         keySpecs;
+    sync_type_t                  syncType;
+    std::set<key_spec_t>         persistedKeys;
 };
 
 

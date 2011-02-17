@@ -24,7 +24,7 @@
 #include "locks.hh"
 
 
-void SyncRegistry::addPersistenceListener(const SyncListener &syncListener) {
+void SyncRegistry::addPersistenceListener(SyncListener *syncListener) {
     LockHolder lh(mutex);
     persistenceListeners.push_back(syncListener);
 }
@@ -47,11 +47,12 @@ void SyncRegistry::itemsPersisted(std::list<QueuedItem> &itemlist) {
 
 
 void SyncRegistry::notifyListeners(const QueuedItem &item) {
-    std::list<SyncListener>::iterator it = persistenceListeners.begin();
-    const KeySpec keyspec(item.getKey(), item.getVBucketId());
+    std::list<SyncListener*>::iterator it = persistenceListeners.begin();
+    key_spec_t keyspec = { 0, item.getVBucketId(), item.getKey() };
 
     while (it != persistenceListeners.end()) {
-        if (it->keySynced(keyspec)) {
+        SyncListener *listener = *it;
+        if (listener->keySynced(keyspec)) {
             it = persistenceListeners.erase(it);
         } else {
             it++;
@@ -60,14 +61,48 @@ void SyncRegistry::notifyListeners(const QueuedItem &item) {
 }
 
 
-bool SyncListener::keySynced(const KeySpec &key) {
-    bool finished = false;
+SyncListener::SyncListener(EventuallyPersistentEngine &epEngine,
+                           const void *c,
+                           const std::set<key_spec_t> &keys,
+                           uint32_t flags) :
+    engine(epEngine), cookie(c), keySpecs(keys) {
 
-    if (keySpecs.find(key) != keySpecs.end()) {
-        finished = (++syncedKeys == keySpecs.size());
+    size_t replicas = (size_t) ((flags & 0xf0) >> 4);
+
+    if (flags & 0x8) {
+        if (replicas == 0) {
+            syncType = PERSIST;
+        } else {
+            if (flags & 0x2) {
+                syncType = REP_AND_PERSIST;
+            } else {
+                syncType = REP_OR_PERSIST;
+            }
+        }
+        // TODO: what if mutation flag is also on?
+    } else if (replicas > 0) {
+        syncType = REP;
+        // TODO: what if mutation flag is also on?
+    } else if (flags & 0x4) {
+        syncType = MUTATION;
+    }
+
+    // TODO: support mutation and replication sync
+    assert(syncType == PERSIST);
+}
+
+
+bool SyncListener::keySynced(key_spec_t &key) {
+    bool finished = false;
+    std::set<key_spec_t>::iterator it = keySpecs.find(key);
+
+    if (it != keySpecs.end()) {
+        key.cas = it->cas;
+        persistedKeys.insert(key);
+        finished = (persistedKeys.size() == keySpecs.size());
 
         if (finished) {
-            engine.getServerApi()->cookie->store_engine_specific(cookie, &syncedKeys);
+            engine.getServerApi()->cookie->store_engine_specific(cookie, this);
             engine.notifyIOComplete(cookie, ENGINE_SUCCESS);
         }
     }

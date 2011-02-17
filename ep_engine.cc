@@ -457,11 +457,64 @@ extern "C" {
     static ENGINE_ERROR_CODE syncCmd(EventuallyPersistentEngine *e,
                                      protocol_binary_request_header *request,
                                      const void *cookie,
-                                     const char **msg,
-                                     protocol_binary_response_status *res) {
+                                     ADD_RESPONSE response) {
         protocol_binary_request_no_extras *req = (protocol_binary_request_no_extras*) request;
+        protocol_binary_response_status res = PROTOCOL_BINARY_RESPONSE_SUCCESS;
         off_t offset = sizeof(req->message.header);
-        *res = PROTOCOL_BINARY_RESPONSE_SUCCESS;
+
+        void *data = e->getServerApi()->cookie->get_engine_specific(cookie);
+
+        if (data != NULL) {
+            SyncListener *syncListener = static_cast<SyncListener *>(data);
+            std::stringstream resp;
+
+            switch (syncListener->getSyncType()) {
+            case PERSIST:
+                {
+                    uint16_t nkeys = htons(syncListener->getPersistedKeys().size());
+                    uint8_t eventid = SYNC_PERSISTED_EVENT;
+                    std::set<key_spec_t>::iterator it = syncListener->getPersistedKeys().begin();
+
+                    resp.write((char *) &nkeys, sizeof(uint16_t));
+                    while (it != syncListener->getPersistedKeys().end()) {
+                        uint64_t cas = htonll(it->cas);
+                        uint16_t vbid = htons(it->vbucketid);
+                        uint16_t keylen = htons(it->key.length());
+
+                        resp.write((char *) &cas, sizeof(uint64_t));
+                        resp.write((char *) &vbid, sizeof(uint16_t));
+                        resp.write((char *) &keylen, sizeof(uint16_t));
+                        resp.write((char *) &eventid, sizeof(uint8_t));
+                        resp.write(it->key.c_str(), it->key.length());
+                        it++;
+                    }
+                }
+                break;
+            case MUTATION:
+                // TODO
+                break;
+            case REP:
+                // TODO
+                break;
+            case REP_OR_PERSIST:
+                // TODO
+                break;
+            case REP_AND_PERSIST:
+                // TODO
+                break;
+            }
+
+            e->getServerApi()->cookie->store_engine_specific(cookie, NULL);
+            delete syncListener;
+
+            std::string body = resp.str();
+            response(NULL, 0, NULL, 0,
+                     body.c_str(), static_cast<uint16_t>(body.length()),
+                     PROTOCOL_BINARY_RAW_BYTES,
+                     static_cast<uint16_t>(res), 0, cookie);
+
+            return ENGINE_SUCCESS;
+        }
 
         // flags, 32 bits
         uint32_t flags;
@@ -477,14 +530,9 @@ extern "C" {
         nkeys = ntohs(nkeys);
         offset += sizeof(uint16_t);
 
-        if (nkeys == 0) {
-            *msg = "empty key list";
-            return ENGINE_EINVAL;
-        }
-
         // key specifications
         uint16_t keylen;
-        std::set<KeySpec> keyset;
+        std::set<key_spec_t> keyset;
 
         for (int i = 0; i < nkeys; i++) {
             // CAS, 64 bits
@@ -508,20 +556,11 @@ extern "C" {
             std::string key(((char *) request) + offset, keylen);
             offset += keylen;
 
-            // TODO: deal with non-zero CAS
-
-            KeySpec keyspec(key, vbucketid);
+            key_spec_t keyspec = { cas, vbucketid, key };
             keyset.insert(keyspec);
         }
 
-        size_t nSyncedKeys = e->sync(keyset, cookie);
-
-        if (nSyncedKeys > 0) {
-            std::stringstream resp;
-            resp << nSyncedKeys << " keys synced";
-            *msg = resp.str().c_str();
-            return ENGINE_SUCCESS;
-        }
+        e->sync(keyset, cookie, flags);
 
         return ENGINE_EWOULDBLOCK;
     }
@@ -682,11 +721,7 @@ extern "C" {
             res = unlockKey(h, request, &msg, &msg_size);
             break;
         case CMD_SYNC:
-            rv = syncCmd(h, request, cookie, &msg, &res);
-            if (rv == ENGINE_EWOULDBLOCK) {
-                return rv;
-            }
-            break;
+            return syncCmd(h, request, cookie, response);
         }
 
         if (item) {
@@ -3106,17 +3141,13 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::touch(const void *cookie,
     return rv;
 }
 
-size_t EventuallyPersistentEngine::sync(std::set<KeySpec> keys,
-                                        const void *cookie) {
-    void *data = serverApi->cookie->get_engine_specific(cookie);
+void EventuallyPersistentEngine::sync(std::set<key_spec_t> keys,
+                                      const void *cookie,
+                                      uint32_t flags) {
+    // TODO: deal with non-zero key CAS
+    // TODO: deal with non-existent keys
 
-    if (data == NULL) {
-        SyncListener syncListener(*this, cookie, keys);
+    SyncListener *syncListener = new SyncListener(*this, cookie, keys, flags);
 
-        syncRegistry.addPersistenceListener(syncListener);
-        return 0;
-    }
-
-    serverApi->cookie->store_engine_specific(cookie, NULL);
-    return *((size_t *) data);
+    syncRegistry.addPersistenceListener(syncListener);
 }
