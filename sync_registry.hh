@@ -72,8 +72,11 @@ private:
 class SyncListener {
 public:
 
-    SyncListener(EventuallyPersistentEngine &epEngine, const void *c,
-                 const std::set<key_spec_t> &keys, uint32_t flags);
+    SyncListener(EventuallyPersistentEngine &epEngine,
+                 const void *c,
+                 const std::set<key_spec_t> &keys,
+                 sync_type_t sync_type,
+                 uint8_t replicaCount = 0);
 
     bool keySynced(key_spec_t &keyspec);
 
@@ -91,6 +94,7 @@ private:
     const void                   *cookie;
     std::set<key_spec_t>         keySpecs;
     sync_type_t                  syncType;
+    uint8_t                      replicas;
     std::set<key_spec_t>         persistedKeys;
 };
 

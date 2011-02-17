@@ -64,28 +64,10 @@ void SyncRegistry::notifyListeners(const QueuedItem &item) {
 SyncListener::SyncListener(EventuallyPersistentEngine &epEngine,
                            const void *c,
                            const std::set<key_spec_t> &keys,
-                           uint32_t flags) :
-    engine(epEngine), cookie(c), keySpecs(keys) {
-
-    size_t replicas = (size_t) ((flags & 0xf0) >> 4);
-
-    if (flags & 0x8) {
-        if (replicas == 0) {
-            syncType = PERSIST;
-        } else {
-            if (flags & 0x2) {
-                syncType = REP_AND_PERSIST;
-            } else {
-                syncType = REP_OR_PERSIST;
-            }
-        }
-        // TODO: what if mutation flag is also on?
-    } else if (replicas > 0) {
-        syncType = REP;
-        // TODO: what if mutation flag is also on?
-    } else if (flags & 0x4) {
-        syncType = MUTATION;
-    }
+                           sync_type_t sync_type,
+                           uint8_t replicaCount) :
+    engine(epEngine), cookie(c), keySpecs(keys),
+    syncType(sync_type), replicas(replicaCount) {
 
     // TODO: support mutation and replication sync
     assert(syncType == PERSIST);
