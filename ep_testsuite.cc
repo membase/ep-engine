@@ -3916,8 +3916,9 @@ static enum test_result test_sync_persistence(ENGINE_HANDLE *h, ENGINE_HANDLE_V1
         }
     }
 
-    for (int i = 0; i < nkeys; i++) {
-        free(params[i]);
+    std::vector<set_key_thread_params*>::iterator it = params.begin();
+    for ( ; it != params.end(); it++) {
+        free(*it);
     }
 
     free(pkt);

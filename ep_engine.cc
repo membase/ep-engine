@@ -29,8 +29,8 @@
 #include "tapthrottle.hh"
 #include "htresizer.hh"
 
-void assembleSyncResponse(std::stringstream &resp, SyncListener *syncListener);
-bool parseSyncOptions(uint32_t flags, sync_type_t *syncType, uint8_t *replicas);
+static void assembleSyncResponse(std::stringstream &resp, SyncListener *syncListener);
+static bool parseSyncOptions(uint32_t flags, sync_type_t *syncType, uint8_t *replicas);
 
 static size_t percentOf(size_t val, double percent) {
     return static_cast<size_t>(static_cast<double>(val) * percent);
@@ -462,8 +462,6 @@ extern "C" {
                                      const void *cookie,
                                      ADD_RESPONSE response) {
         protocol_binary_request_no_extras *req = (protocol_binary_request_no_extras*) request;
-        off_t offset = sizeof(req->message.header);
-
         void *data = e->getServerApi()->cookie->get_engine_specific(cookie);
 
         if (data != NULL) {
@@ -483,6 +481,7 @@ extern "C" {
             return ENGINE_SUCCESS;
         }
 
+        off_t offset = sizeof(req->message.header);
         // flags, 32 bits
         uint32_t flags;
 
@@ -508,7 +507,6 @@ extern "C" {
         offset += sizeof(uint16_t);
 
         // key specifications
-        uint16_t keylen;
         std::set<key_spec_t> *keyset = new std::set<key_spec_t>();
 
         for (int i = 0; i < nkeys; i++) {
@@ -525,6 +523,7 @@ extern "C" {
             offset += sizeof(uint16_t);
 
             // key length, 16 bits
+            uint16_t keylen;
             memcpy(&keylen, ((char *) request) + offset, sizeof(uint16_t));
             keylen = ntohs(keylen);
             offset += sizeof(uint16_t);
@@ -3150,7 +3149,7 @@ void EventuallyPersistentEngine::sync(std::set<key_spec_t> *keys,
     syncRegistry.addPersistenceListener(syncListener);
 }
 
-bool parseSyncOptions(uint32_t flags, sync_type_t *syncType, uint8_t *replicas) {
+static bool parseSyncOptions(uint32_t flags, sync_type_t *syncType, uint8_t *replicas) {
     *replicas = (uint8_t) ((flags & 0xf0) >> 4);
     bool syncRep = (*replicas > 0);
     bool syncPersist = ((flags & 0x8) == 0x8);
@@ -3182,7 +3181,7 @@ bool parseSyncOptions(uint32_t flags, sync_type_t *syncType, uint8_t *replicas) 
     return true;
 }
 
-void assembleSyncResponse(std::stringstream &resp, SyncListener *syncListener) {
+static void assembleSyncResponse(std::stringstream &resp, SyncListener *syncListener) {
     uint8_t eventid;
     std::set<key_spec_t>::iterator it;
     uint16_t nkeys = syncListener->getInvalidCasKeys().size() +
