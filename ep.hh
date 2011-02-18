@@ -687,6 +687,20 @@ public:
                    rel_time_t currentTime, uint32_t lockTimeout,
                    const void *cookie);
 
+    /**
+     * Retrieve the StoredValue associated with a key/vbucket pair.
+     *
+     * @param key the key
+     * @param vbucket the vbucket's ID
+     * @param honorStates if false, fetch a result regardless of state
+     *
+     * @return a pointer to the StoredValue associated with the key/vbucket,
+     *         if any, NULL otherwise
+     */
+    StoredValue* getStoredValue(const std::string &key,
+                                uint16_t vbucket,
+                                bool honorStates = true);
+
     ENGINE_ERROR_CODE unlockKey(const std::string &key,
                                 uint16_t vbucket,
                                 uint64_t cas,
