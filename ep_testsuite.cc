@@ -4078,6 +4078,11 @@ static enum test_result test_sync_mutation(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h
         }
     }
 
+    std::vector<set_key_thread_params*>::iterator itp = params.begin();
+    for ( ; itp != params.end(); itp++) {
+        free(*itp);
+    }
+
     free(pkt);
 
     return SUCCESS;
