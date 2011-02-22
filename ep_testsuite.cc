@@ -791,6 +791,7 @@ typedef struct {
     const key_spec_t *keyspec;
     const char *value;
     int iterations;
+    uint32_t wait;
 } set_key_thread_params;
 
 extern "C" {
@@ -820,12 +821,29 @@ extern "C" {
         uint16_t vbucketid = params->keyspec->vbucketid;
         item *it = NULL;
 
+        usleep(params->wait);
+
         for (int i = 0; i < params->iterations; i++) {
             check(
                   store(params->h, params->h1, NULL, OPERATION_SET,
                         key, params->value, &it, 0, vbucketid) == ENGINE_SUCCESS,
                   "Thread failed to store an item");
         }
+
+        return NULL;
+    }
+
+    static void* conc_del_key_thread(void *arg) {
+        set_key_thread_params *params = static_cast<set_key_thread_params *>(arg);
+        const char *key = params->keyspec->key.c_str();
+        uint16_t vbucketid = params->keyspec->vbucketid;
+
+        usleep(params->wait);
+
+        check(
+              params->h1->remove(params->h, NULL, key, strlen(key), 0, vbucketid)
+              == ENGINE_SUCCESS,
+              "Failed remove with value.");
 
         return NULL;
     }
@@ -3870,6 +3888,7 @@ static enum test_result test_sync_persistence(ENGINE_HANDLE *h, ENGINE_HANDLE_V1
         p->keyspec = &keyspecs[i];
         p->value = "qwerty";
         p->iterations = 10;
+        p->wait = 0;
         params.push_back(p);
     }
 
@@ -3965,6 +3984,97 @@ static enum test_result test_sync_persistence(ENGINE_HANDLE *h, ENGINE_HANDLE_V1
                   "right event id (SYNC_INVALID_KEY)");
         } else {
             check(false, "received unpextec key in the response");
+        }
+    }
+
+    free(pkt);
+
+    return SUCCESS;
+}
+
+static enum test_result test_sync_mutation(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
+    const key_spec_t keyspecs[] = {
+        {0, 0, "key1"}, {0, 0, "key2"}, {0, 0, "del_key"},
+        {666, 0, "key_bad_cas"}, {0, 0, "foo_key"},
+    };
+    const uint16_t nkeys = 5;
+    pthread_t threads[nkeys];
+    item *it = NULL;
+    protocol_binary_request_header *pkt = create_sync_packet(0x00000004, nkeys, keyspecs);
+
+    check(store(h, h1, NULL, OPERATION_SET, "key1", "foo", &it, 0, 0) == ENGINE_SUCCESS,
+          "failed to store key1");
+    check(store(h, h1, NULL, OPERATION_SET, "key2", "bar", &it, 0, 0) == ENGINE_SUCCESS,
+          "failed to store key2");
+    check(store(h, h1, NULL, OPERATION_SET, "key_bad_cas", "A", &it, 0, 0) == ENGINE_SUCCESS,
+          "failed to store key_bad_cas");
+    check(store(h, h1, NULL, OPERATION_SET, "del_key", "X", &it, 0, 0) == ENGINE_SUCCESS,
+          "failed to store del_key");
+
+    std::vector<set_key_thread_params*> params;
+
+    for (int i = 0; i < (nkeys - 2); i++) {
+        set_key_thread_params *p = (set_key_thread_params *) malloc(sizeof(set_key_thread_params));
+        p->h = h;
+        p->h1 = h1;
+        p->keyspec = &keyspecs[i];
+        p->value = "qwerty";
+        p->iterations = 1;
+        p->wait = 2000000;
+        params.push_back(p);
+    }
+
+    for (int i = 0; i < (nkeys - 2); i++) {
+        int r;
+
+        if (keyspecs[i].key == "del_key") {
+            r = pthread_create(&threads[i], NULL, conc_del_key_thread, params[i]);
+        } else {
+            r = pthread_create(&threads[i], NULL, conc_set_key_thread, params[i]);
+        }
+
+        assert(r == 0);
+    }
+
+    check(h1->unknown_command(h, NULL, pkt, add_response) == ENGINE_SUCCESS,
+          "SYNC on mutation operation failed");
+
+    for (int i = 0; i < (nkeys - 2); i++) {
+        void *trv = NULL;
+        int r = pthread_join(threads[i], &trv);
+        assert(r == 0);
+    }
+
+    // verify the response sent to the client is correct
+    std::list< std::pair<key_spec_t, uint8_t> > resp = parse_sync_response(last_body);
+
+    check(resp.size() == nkeys, "response has the same # of keys");
+
+    std::list< std::pair<key_spec_t, uint8_t> >::iterator itresp = resp.begin();
+
+    for ( ; itresp != resp.end(); itresp++) {
+        key_spec_t keyspec = itresp->first;
+        uint8_t eventid = itresp->second;
+
+        check(keyspec.vbucketid == 0, "right vbucket id");
+
+        if (keyspec.key == "key1" || keyspec.key == "key2") {
+            check(eventid == SYNC_MODIFIED_EVENT,
+                  "right event id (SYNC_MODIFIED_EVENT)");
+        } else if (keyspec.key == "del_key") {
+            check(keyspec.cas == 0, "right cas");
+            check(eventid == SYNC_DELETED_EVENT,
+                  "right event id (SYNC_DELETED_EVENT)");
+        } else if (keyspec.key == "key_bad_cas") {
+            check(keyspec.cas == 666, "right cas");
+            check(eventid == SYNC_INVALID_CAS,
+                  "right event id (SYNC_INVALID_CAS)");
+        } else if (keyspec.key == "foo_key") {
+            check(keyspec.cas == 0, "right cas");
+            check(eventid == SYNC_INVALID_KEY,
+                  "right event id (SYNC_INVALID_KEY)");
+        } else {
+            check(false, "unexpected key in SYNC on mutation response");
         }
     }
 
@@ -4176,6 +4286,7 @@ engine_test_t* get_tests(void) {
          NULL, teardown, NULL},
         {"sync bad flags", test_sync_bad_flags, NULL, teardown, NULL},
         {"sync persistence", test_sync_persistence, NULL, teardown, NULL},
+        {"sync mutation", test_sync_mutation, NULL, teardown, NULL},
         {NULL, NULL, NULL, NULL, NULL}
     };
     return tests;
