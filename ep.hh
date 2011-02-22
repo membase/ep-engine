@@ -315,7 +315,7 @@ class TransactionContext {
 public:
 
     TransactionContext(EPStats &st, KVStore *ks, SyncRegistry &syncReg)
-        : stats(st), underlying(ks), _remaining(0), intxn(false), syncRegistry(&syncReg) {}
+        : stats(st), underlying(ks), _remaining(0), intxn(false), syncRegistry(syncReg) {}
 
     /**
      * Call this whenever entering a transaction.
@@ -382,7 +382,7 @@ private:
     Atomic<int>  txnSize;
     bool         intxn;
     std::list<QueuedItem>     uncommittedItems;
-    SyncRegistry              *syncRegistry;
+    SyncRegistry              &syncRegistry;
 };
 
 /**
