@@ -3884,19 +3884,8 @@ static enum test_result test_sync_persistence(ENGINE_HANDLE *h, ENGINE_HANDLE_V1
         assert(r == 0);
     }
 
-    ENGINE_ERROR_CODE engine_code;
-    int count = 0;
-    do {
-        engine_code = h1->unknown_command(h, NULL, pkt, add_response);
-        if (engine_code == ENGINE_SUCCESS) {
-            // noop
-        } else if (engine_code == ENGINE_EWOULDBLOCK) {
-            count++;
-            usleep(10);
-        } else {
-            check(false, "unexpected engine error code");
-        }
-    } while((count < 12) && (engine_code != ENGINE_SUCCESS));
+    check(h1->unknown_command(h, NULL, pkt, add_response) == ENGINE_SUCCESS,
+          "SYNC on persistence command success");
 
     // verify the response sent to the client is correct
     std::list< std::pair<key_spec_t, uint8_t> > resp = parse_sync_response(last_body);
