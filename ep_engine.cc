@@ -464,7 +464,6 @@ extern "C" {
                                      protocol_binary_request_header *request,
                                      const void *cookie,
                                      ADD_RESPONSE response) {
-        protocol_binary_request_no_extras *req = (protocol_binary_request_no_extras*) request;
         void *data = e->getServerApi()->cookie->get_engine_specific(cookie);
 
         if (data != NULL) {
@@ -484,11 +483,12 @@ extern "C" {
             return ENGINE_SUCCESS;
         }
 
-        off_t offset = sizeof(req->message.header);
+        char *body = (char *) (request + 1);
+        off_t offset = 0;
         // flags, 32 bits
         uint32_t flags;
 
-        memcpy(&flags, ((char *) request) + offset, sizeof(uint32_t));
+        memcpy(&flags, body + offset, sizeof(uint32_t));
         flags = ntohl(flags);
         offset += sizeof(uint32_t);
 
@@ -505,7 +505,7 @@ extern "C" {
         // number of keys in the request, 16 bits
         uint16_t nkeys;
 
-        memcpy(&nkeys, ((char *) request) + offset, sizeof(uint16_t));
+        memcpy(&nkeys, body + offset, sizeof(uint16_t));
         nkeys = ntohs(nkeys);
         offset += sizeof(uint16_t);
 
@@ -515,24 +515,24 @@ extern "C" {
         for (int i = 0; i < nkeys; i++) {
             // CAS, 64 bits
             uint64_t cas;
-            memcpy(&cas, ((char *) request) + offset, sizeof(uint64_t));
+            memcpy(&cas, body + offset, sizeof(uint64_t));
             cas = ntohll(cas);
             offset += sizeof(uint64_t);
 
             // vbucket id, 16 bits
             uint16_t vbucketid;
-            memcpy(&vbucketid, ((char *) request) + offset, sizeof(uint16_t));
+            memcpy(&vbucketid, body + offset, sizeof(uint16_t));
             vbucketid = ntohs(vbucketid);
             offset += sizeof(uint16_t);
 
             // key length, 16 bits
             uint16_t keylen;
-            memcpy(&keylen, ((char *) request) + offset, sizeof(uint16_t));
+            memcpy(&keylen, body + offset, sizeof(uint16_t));
             keylen = ntohs(keylen);
             offset += sizeof(uint16_t);
 
             // key string
-            std::string key(((char *) request) + offset, keylen);
+            std::string key(body + offset, keylen);
             offset += keylen;
 
             key_spec_t keyspec = { cas, vbucketid, key };
