@@ -38,8 +38,8 @@ void SyncRegistry::itemPersisted(const QueuedItem &item) {
 
 
 void SyncRegistry::itemsPersisted(std::list<QueuedItem> &itemlist) {
-    std::list<QueuedItem>::iterator it = itemlist.begin();
     LockHolder lh(persistenceMutex);
+    std::list<QueuedItem>::iterator it = itemlist.begin();
 
     for ( ; it != itemlist.end(); it++) {
         key_spec_t keyspec = { 0, it->getVBucketId(), it->getKey() };
