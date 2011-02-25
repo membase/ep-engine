@@ -535,7 +535,7 @@ extern "C" {
             std::string key(body + offset, keylen);
             offset += keylen;
 
-            key_spec_t keyspec = { cas, vbucketid, key };
+            key_spec_t keyspec(cas, vbucketid, key);
             keyset->insert(keyspec);
         }
 

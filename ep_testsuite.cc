@@ -3828,7 +3828,7 @@ static std::list< std::pair<key_spec_t, uint8_t> > parse_sync_response(char *res
         offset += sizeof(uint8_t);
 
         std::string key(response + offset, keylen);
-        key_spec_t keyspec = { cas, vbid, key };
+        key_spec_t keyspec(cas, vbid, key);
         offset += keylen;
 
         std::pair<key_spec_t, uint8_t> p(keyspec, eventid);
@@ -3839,7 +3839,7 @@ static std::list< std::pair<key_spec_t, uint8_t> > parse_sync_response(char *res
 }
 
 static enum test_result test_sync_bad_flags(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
-    const key_spec_t keyspecs[] = { {0, 0, "key1"}, {0, 0, "key2"} };
+    const key_spec_t keyspecs[] = { key_spec_t(0, 0, "key1"), key_spec_t(0, 0, "key2") };
     const uint16_t nkeys = 2;
     protocol_binary_request_header *pkt;
 
@@ -3872,9 +3872,9 @@ static enum test_result test_sync_bad_flags(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *
 
 static enum test_result test_sync_persistence(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
     const key_spec_t keyspecs[] = {
-        {0, 0, "key1"}, {0, 0, "key2"}, {0, 0, "key3"},
-        {0, 0, "key4"}, {0, 0, "key5"}, {666, 0, "key6"},
-        {0, 0, "key7"}, {0, 0, "key8"}, {0, 0, "NonExistentKey"}
+        key_spec_t(0, 0, "key1"), key_spec_t(0, 0, "key2"), key_spec_t(0, 0, "key3"),
+        key_spec_t(0, 0, "key4"), key_spec_t(0, 0, "key5"), key_spec_t(666, 0, "key6"),
+        key_spec_t(0, 0, "key7"), key_spec_t(0, 0, "key8"), key_spec_t(0, 0, "NonExistentKey")
     };
     const uint16_t nkeys = 9;
     pthread_t threads[nkeys];
@@ -3949,7 +3949,9 @@ static enum test_result test_sync_persistence(ENGINE_HANDLE *h, ENGINE_HANDLE_V1
 
     // test that sending a request with only invalid keys and/or mismatching key CAS'es
     // doesn't block the client forever
-    const key_spec_t keyspecs2[] = { {0, 0, "fookey"}, {999, 0, "key1"} };
+    const key_spec_t keyspecs2[] = {
+        key_spec_t(0, 0, "fookey"), key_spec_t(999, 0, "key1")
+    };
     const uint16_t nkeys2 = 2;
 
     pkt = create_sync_packet(0x00000008, nkeys2, keyspecs2);
@@ -3994,8 +3996,8 @@ static enum test_result test_sync_persistence(ENGINE_HANDLE *h, ENGINE_HANDLE_V1
 
 static enum test_result test_sync_mutation(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
     const key_spec_t keyspecs[] = {
-        {0, 0, "key1"}, {0, 0, "key2"}, {0, 0, "del_key"},
-        {666, 0, "key_bad_cas"}, {0, 0, "foo_key"},
+        key_spec_t(0, 0, "key1"), key_spec_t(0, 0, "key2"), key_spec_t(0, 0, "del_key"),
+        key_spec_t(666, 0, "key_bad_cas"), key_spec_t(0, 0, "foo_key"),
     };
     const uint16_t nkeys = 5;
     pthread_t threads[nkeys];
