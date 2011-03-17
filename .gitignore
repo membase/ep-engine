@@ -41,6 +41,7 @@
 /m4/lt~obsolete.m4
 /m4/version.m4
 /management/mbdbconvert
+/management/mbadm-online-restore
 /management/sqlite3
 /sizes
 /stamp-h1

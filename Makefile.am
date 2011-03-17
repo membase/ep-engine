@@ -8,7 +8,7 @@ bin_SCRIPTS = management/analyze_core \
 lib_LTLIBRARIES = ep.la ep_testsuite.la timing_tests.la
 noinst_LTLIBRARIES = libkvstore.la
 
-bin_PROGRAMS = management/mbdbconvert
+bin_PROGRAMS = management/mbdbconvert management/mbadm-online-restore
 BUILT_SOURCES =
 CLEANFILES =
 
@@ -230,6 +230,8 @@ dispatcher_test_SOURCES += gethrtime.c
 vbucket_test_SOURCES += gethrtime.c
 checkpoint_test_SOURCES += gethrtime.c
 endif
+
+management_mbadm_online_restore_SOURCES = management/mbadm_online_restore.c
 
 pythonlibdir=$(libdir)/python
 pythonlib_DATA= \
