@@ -44,6 +44,8 @@ ep_la_SOURCES = \
                  mutex.hh \
                  priority.cc priority.hh \
                  queueditem.cc queueditem.hh \
+                 restore.hh \
+                 restore_impl.cc \
                  ringbuffer.hh \
                  sizes.cc \
                  stats.hh \
