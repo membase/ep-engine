@@ -24,7 +24,7 @@ KVStore *KVStoreFactory::create(EventuallyPersistentEngine &theEngine) {
     std::string backend = c.getBackend();
     if (backend.compare("sqlite") == 0) {
         SqliteStrategy *sqliteInstance = NULL;
-        enum db_type type;
+        enum db_type type = multi_db;
 
         if (!KVStoreFactory::stringToType(c.getDbStrategy(), type)) {
             getLogger()->log(EXTENSION_LOG_WARNING, NULL,

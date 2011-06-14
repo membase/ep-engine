@@ -1325,7 +1325,6 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
         }
     }
 
-    setTxnSize(configuration.getMaxTxnSize());
     maxItemSize = configuration.getMaxItemSize();
     minDataAge = configuration.getMinDataAge();
     memLowWat = configuration.getMemLowWat();
@@ -1402,6 +1401,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
             return ret;
         }
 
+        setTxnSize(configuration.getMaxTxnSize());
         setMinDataAge(minDataAge);
         setQueueAgeCap(queueAgeCap);
 
