@@ -352,7 +352,7 @@ private:
  */
 MemcachedEngine::MemcachedEngine(EventuallyPersistentEngine *e, Configuration &config) :
     sock(INVALID_SOCKET), configuration(config), configurationError(true),
-    shutdown(false), ev_base(event_base_new()), engine(e)
+    shutdown(false), ev_base(event_base_new()), ev_flags(0), seqno(0), output(NULL), engine(e)
 {
     if (!createNotificationPipe()) {
         throw std::runtime_error("Failed to create notification pipe");
