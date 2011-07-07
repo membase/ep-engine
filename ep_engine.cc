@@ -546,10 +546,10 @@ extern "C" {
             return respSent ? ENGINE_SUCCESS : ENGINE_FAILED;
         }
 
-        if (syncType == PERSIST || syncType == REP_OR_PERSIST ||
-            syncType == REP_AND_PERSIST) {
+        bool persistSyncDisabled(!e->maySyncOnPersist());
+        if (persistSyncDisabled && (syncType == PERSIST || syncType == REP_OR_PERSIST ||
+                                   syncType == REP_AND_PERSIST)) {
 
-            // SYNC for persistence not yet supported (MB-3817 related).
             const std::string msg("SYNC for persistence is not supported.");
             bool respSent = response(NULL, 0, NULL, 0, msg.c_str(), msg.length(),
                                      PROTOCOL_BINARY_RAW_BYTES,
@@ -1089,6 +1089,9 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::initialize(const char* config) {
                                           new EpEngineValueChangeListener(*this));
     syncTimeout = configuration.getSyncCmdTimeout();
     configuration.addValueChangedListener("sync_cmd_timeout",
+                                          new EpEngineValueChangeListener(*this));
+    syncOnPersist = configuration.isSyncOnPersist();
+    configuration.addValueChangedListener("sync_on_persist",
                                           new EpEngineValueChangeListener(*this));
 
     BackFillVisitor::setResidentItemThreshold(configuration.getBfResidentThreshold());
