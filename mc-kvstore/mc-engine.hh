@@ -158,12 +158,12 @@ private:
 
     Buffer *nextToSend();
     void insertCommand(BinaryPacketHandler *rh);
-    void doInsertCommand(BinaryPacketHandler *rh);
+    void insertCommandWorkerThread(BinaryPacketHandler *rh);
 
     void handleResponse(protocol_binary_response_header *res);
     void handleRequest(protocol_binary_request_header *req);
 
-    void notify();
+    void notify(BinaryPacketHandler *rh);
 
     bool connect();
 
@@ -186,6 +186,11 @@ private:
 
     /** The event item representing the notify pipe */
     struct event ev_notify;
+
+    /** buffer holding partial pointer info passed through notify pipes.
+        Shouldn't be necessary usually, but here for correctness */
+    uint8_t notifyBuffer[sizeof(BinaryPacketHandler *)];
+    size_t notifyBufferOffset;
 
     uint32_t seqno;
     Buffer *output;
@@ -248,7 +253,6 @@ private:
     } commandStats[0xff]; // @todo make this map smaller.. we only use
     // a subset of the packets...
 
-    Mutex mutex;
     std::queue<Buffer*> commandQueue;
     std::list<BinaryPacketHandler*> responseHandler;
     std::list<BinaryPacketHandler*> tapHandler;

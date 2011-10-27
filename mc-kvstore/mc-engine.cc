@@ -472,7 +472,7 @@ private:
 MemcachedEngine::MemcachedEngine(EventuallyPersistentEngine *e, Configuration &config) :
     sock(INVALID_SOCKET), configuration(config), configurationError(true),
     shutdown(false), ev_base(event_base_new()),
-    ev_flags(0), seqno(0), output(NULL),
+    ev_flags(0), notifyBufferOffset(0), seqno(0), output(NULL),
     currentCommand(0xff), lastSentCommand(0xff), lastReceivedCommand(0xff),
     engine(e), epStats(NULL)
 {
@@ -503,7 +503,7 @@ void MemcachedEngine::start() {
 
 MemcachedEngine::~MemcachedEngine() {
     shutdown = true;
-    notify();
+    notify(NULL);
     int ret = pthread_join(threadid, NULL);
     if (ret != 0) {
         getLogger()->log(EXTENSION_LOG_WARNING, this,
@@ -604,21 +604,36 @@ void MemcachedEngine::libeventCallback(evutil_socket_t s, short which) {
     updateEvent(s);
 }
 
-void MemcachedEngine::notifyHandler(evutil_socket_t s, short which) {
+void MemcachedEngine::notifyHandler(evutil_socket_t s, short) {
     if (shutdown) {
         event_base_loopbreak(ev_base);
+        return;
     }
-    assert(which & EV_READ);
-    char devnull[1024];
-
-    if (recv(s, devnull, sizeof(devnull), 0) == -1) {
+    /* We've been sent new work to do through the pipe. Receive the pointer
+        to it and put it on the work queue. We need to deal with partial
+        recv, though it's probably not possible on most platforms */
+    BinaryPacketHandler *rh;
+    int received;
+    if ((received = recv(s, notifyBuffer + notifyBufferOffset,
+            sizeof(notifyBuffer) - notifyBufferOffset, 0)) == -1) {
         abort();
+    }
+    if (received + notifyBufferOffset != sizeof(notifyBuffer)) {
+        notifyBufferOffset += received;
+        return;
+    }
+    //buffer filled with pointer info, do the work!
+    notifyBufferOffset = 0;
+    memcpy(&rh, notifyBuffer, sizeof(rh));
+    if (rh == NULL) {
+        event_base_loopbreak(ev_base);
+        return;
     }
 
     // Someone added a new command... just invoke the callback
     // it will automatically send the command if we isn't blocked
     // on write already...
-    libeventCallback(sock, 0);
+    libeventCallback(sock, EV_WRITE);
 }
 
 void MemcachedEngine::updateEvent(evutil_socket_t s) {
@@ -650,7 +665,6 @@ void MemcachedEngine::updateEvent(evutil_socket_t s) {
 }
 
 void MemcachedEngine::resetConnection(void) {
-    LockHolder lh(mutex);
     lastReceivedCommand = 0xff;
     lastSentCommand = 0xff;
     currentCommand = 0xff;
@@ -685,7 +699,7 @@ void MemcachedEngine::reschedule(std::list<BinaryPacketHandler*> &packets) {
 
     std::list<BinaryPacketHandler*>::iterator iter;
     for (iter = p.begin(); iter != p.end(); ++iter) {
-        doInsertCommand(*iter);
+        insertCommandWorkerThread(*iter);
     }
 }
 
@@ -802,7 +816,6 @@ void MemcachedEngine::sendData(evutil_socket_t s) {
 }
 
 Buffer *MemcachedEngine::nextToSend() {
-    LockHolder lh(mutex);
     if (commandQueue.empty()) {
         return NULL;
     }
@@ -821,7 +834,6 @@ void MemcachedEngine::handleResponse(protocol_binary_response_header *res) {
         std::cout << res;
     }
 
-    LockHolder lh(mutex);
     std::list<BinaryPacketHandler*>::iterator iter;
     for (iter = responseHandler.begin(); iter != responseHandler.end()
             && (*iter)->seqno < res->response.opaque; ++iter) {
@@ -874,7 +886,6 @@ void MemcachedEngine::handleResponse(protocol_binary_response_header *res) {
 }
 
 void MemcachedEngine::handleRequest(protocol_binary_request_header *req) {
-    LockHolder lh(mutex);
 
     if (packet_debug) {
         std::cout << req;
@@ -904,12 +915,13 @@ void MemcachedEngine::handleRequest(protocol_binary_request_header *req) {
     }
 }
 
-void MemcachedEngine::notify() {
-    ssize_t nw = send(notifyPipe[1], "", 1, 0);
-    if (nw != 1) {
+void MemcachedEngine::notify(BinaryPacketHandler *rh) {
+    ssize_t nw = send(notifyPipe[1], &rh, sizeof(rh), 0);
+    if (nw != sizeof(rh)) {
         std::stringstream ss;
         ss << "Failed to send notification message to the engine. "
-           << "send() returned " << nw << " but we expected 1.";
+           << "send() returned " << nw << " but we expected " << sizeof(rh)
+           << ".";
         if (nw == -1) {
             ss << std::endl << "Error: " << strerror(errno);
         }
@@ -996,13 +1008,13 @@ bool MemcachedEngine::createNotificationPipe() {
                 sizeof(flags));
         setsockopt(notifyPipe[j], SOL_SOCKET, SO_REUSEADDR, (void *)&flags,
                 sizeof(flags));
+    }
 
-        if (evutil_make_socket_nonblocking(notifyPipe[j]) == -1) {
-            EVUTIL_CLOSESOCKET(notifyPipe[0]);
-            EVUTIL_CLOSESOCKET(notifyPipe[1]);
-            notifyPipe[0] = notifyPipe[1] = INVALID_SOCKET;
-            return false;
-        }
+    if (evutil_make_socket_nonblocking(notifyPipe[0]) == -1) {
+        EVUTIL_CLOSESOCKET(notifyPipe[0]);
+        EVUTIL_CLOSESOCKET(notifyPipe[1]);
+        notifyPipe[0] = notifyPipe[1] = INVALID_SOCKET;
+        return false;
     }
 
     return true;
@@ -1013,27 +1025,20 @@ bool MemcachedEngine::createNotificationPipe() {
  * to it's lists.
  */
 void MemcachedEngine::insertCommand(BinaryPacketHandler *rh) {
-    LockHolder lh(mutex);
-    doInsertCommand(rh);
+    notify(rh);
 }
 
-void MemcachedEngine::doInsertCommand(BinaryPacketHandler *rh) {
-    protocol_binary_request_no_extras *req;
+void MemcachedEngine::insertCommandWorkerThread(BinaryPacketHandler *rh) {
     Buffer *buffer = rh->getCommandBuffer();
+    protocol_binary_request_no_extras *req;
     buffer->curr = 0;
     req = (protocol_binary_request_no_extras *)buffer->data;
     req->message.header.request.opaque = rh->seqno = seqno++;
-
-    bool doNotify = commandQueue.empty();
     commandQueue.push(buffer);
     if (dynamic_cast<TapResponseHandler*>(rh)) {
         tapHandler.push_back(rh);
     } else {
         responseHandler.push_back(rh);
-    }
-
-    if (doNotify) {
-        notify();
     }
 }
 
@@ -1229,7 +1234,7 @@ void MemcachedEngine::doSelectBucket() {
     buffer->avail = buffer->size;
     memcpy(buffer->data + sizeof(req->bytes), name.c_str(), name.length());
 
-    doInsertCommand(new SelectBucketResponseHandler(buffer, epStats));
+    insertCommand(new SelectBucketResponseHandler(buffer, epStats));
 }
 
 
