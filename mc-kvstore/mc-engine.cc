@@ -1037,8 +1037,9 @@ void MemcachedEngine::doInsertCommand(BinaryPacketHandler *rh) {
     }
 }
 
-void MemcachedEngine::delq(const std::string &key, uint16_t vb,
-        Callback<int> &cb) {
+void MemcachedEngine::delq(const Item &itm, Callback<int> &cb) {
+    const std::string key = itm.getKey();
+    const uint16_t vb = itm.getVBucketId();
     protocol_binary_request_delete *req;
     Buffer *buffer = new Buffer(sizeof(req->bytes) + key.length());
     req = (protocol_binary_request_delete *)buffer->data;
