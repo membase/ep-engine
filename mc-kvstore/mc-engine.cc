@@ -1057,6 +1057,34 @@ void MemcachedEngine::delq(const Item &itm, Callback<int> &cb) {
     insertCommand(new DelResponseHandler(buffer, epStats, cb));
 }
 
+void MemcachedEngine::delmq(const Item &it, Callback<int> &cb) {
+    protocol_binary_request_delete_with_meta *req;
+    Buffer *buffer = new Buffer(sizeof(req->bytes) + it.getNKey() +
+                                it.getNMetaBytes());
+    req = (protocol_binary_request_delete_with_meta *)buffer->data;
+
+    memset(buffer->data, 0, buffer->size);
+    req->message.header.request.magic = PROTOCOL_BINARY_REQ;
+    req->message.header.request.opcode = CMD_DEL_WITH_META;
+    req->message.header.request.extlen = 4;
+    req->message.header.request.keylen = ntohs((uint16_t)it.getNKey());
+    req->message.header.request.datatype = PROTOCOL_BINARY_RAW_BYTES;
+    req->message.header.request.vbucket = ntohs(it.getVBucketId());
+    uint32_t bodylen = req->message.header.request.extlen + it.getNKey()
+                       + it.getNMetaBytes();
+    req->message.header.request.bodylen = ntohl(bodylen);
+
+    req->message.body.nmeta_bytes = ntohl(it.getNMetaBytes());
+    char *ptr = buffer->data + sizeof(req->bytes);
+    memcpy(ptr, it.getKey().c_str(), it.getNKey());
+    ptr += it.getNKey();
+    size_t nb = it.getNMetaBytes();
+    Item::encodeMeta(it, (uint8_t*)ptr, nb);
+    buffer->avail = buffer->size;
+
+    insertCommand(new DelResponseHandler(buffer, epStats, cb));
+}
+
 void MemcachedEngine::setmq(const Item &it, Callback<mutation_result> &cb) {
     protocol_binary_request_set_with_meta *req;
     Buffer *buffer = new Buffer(sizeof(req->bytes) + it.getNKey() +
