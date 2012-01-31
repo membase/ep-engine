@@ -1307,29 +1307,34 @@ void EventuallyPersistentStore::bgFetch(const std::string &key,
     roDispatcher->schedule(dcb, NULL, Priority::BgFetcherPriority, bgFetchDelay);
 }
 
-GetValue EventuallyPersistentStore::get(const std::string &key,
-                                        uint16_t vbucket,
-                                        const void *cookie,
-                                        bool queueBG, bool honorStates) {
+GetValue EventuallyPersistentStore::getInternal(const std::string &key,
+                                                uint16_t vbucket,
+                                                const void *cookie,
+                                                bool queueBG,
+                                                bool honorStates,
+                                                vbucket_state_t requestState) {
     RCPtr<VBucket> vb = getVBucket(vbucket);
     if (!vb) {
         ++stats.numNotMyVBuckets;
         return GetValue(NULL, ENGINE_NOT_MY_VBUCKET);
-    } else if (honorStates && vb->getState() == vbucket_state_dead) {
-        ++stats.numNotMyVBuckets;
-        return GetValue(NULL, ENGINE_NOT_MY_VBUCKET);
-    } else if (vb->getState() == vbucket_state_active) {
-        if (vb->checkpointManager.isHotReload()) {
-            if (vb->addPendingOp(cookie)) {
+    }
+
+    vbucket_state_t vbstate = vb->getState();
+    if (honorStates) {
+        if (vbstate != requestState) {
+            ++stats.numNotMyVBuckets;
+            return GetValue(NULL, ENGINE_NOT_MY_VBUCKET);
+        } else {
+            if (vbstate == vbucket_state_pending && vb->addPendingOp(cookie)) {
                 return GetValue(NULL, ENGINE_EWOULDBLOCK);
             }
         }
-    } else if(honorStates && vb->getState() == vbucket_state_replica) {
-        ++stats.numNotMyVBuckets;
-        return GetValue(NULL, ENGINE_NOT_MY_VBUCKET);
-    } else if(honorStates && vb->getState() == vbucket_state_pending) {
-        if (vb->addPendingOp(cookie)) {
-            return GetValue(NULL, ENGINE_EWOULDBLOCK);
+    } else {
+        if (vbstate == vbucket_state_active) {
+            if (vb->checkpointManager.isHotReload() &&
+                vb->addPendingOp(cookie)) {
+                return GetValue(NULL, ENGINE_EWOULDBLOCK);
+            }
         }
     }
 

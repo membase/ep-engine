@@ -464,7 +464,30 @@ public:
      */
     GetValue get(const std::string &key, uint16_t vbucket,
                  const void *cookie, bool queueBG=true,
-                 bool honorStates=true);
+                 bool honorStates=true) {
+
+        return getInternal(key, vbucket, cookie, queueBG, honorStates,
+                           vbucket_state_active);
+    }
+
+    /**
+     * Retrieve a value.
+     *
+     * @param key the key to fetch
+     * @param vbucket the vbucket from which to retrieve the key
+     * @param cookie the connection cookie
+     * @param queueBG if true, automatically queue a background fetch if necessary
+     * @param requestState fetch a result iff the vbucket state == requestState
+     *
+     * @return a GetValue representing the result of the request
+     */
+
+    GetValue getReplica(const std::string &key, uint16_t vbucket,
+                        const void *cookie, bool queueBG,
+                        vbucket_state_t requestState) {
+
+        return getInternal(key, vbucket, cookie, queueBG, true, requestState);
+    }
 
 
     /**
@@ -909,6 +932,10 @@ private:
     bool isVbCachedStateStale(uint16_t vb, vbucket_state_t state);
 
     bool hasItemsForPersistence(void);
+
+    GetValue getInternal(const std::string &key, uint16_t vbucket,
+                         const void *cookie, bool queueBG,
+                         bool honorStates, vbucket_state_t requestState);
 
     friend class Flusher;
     friend class BGFetchCallback;
