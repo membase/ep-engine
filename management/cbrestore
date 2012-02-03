@@ -25,6 +25,7 @@ import time
 import traceback
 import ctypes
 import mc_bin_client
+import math
 
 DEFAULT_THREADS = 4
 DEFAULT_HOST = "127.0.0.1"
