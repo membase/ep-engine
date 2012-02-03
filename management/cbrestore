@@ -216,9 +216,10 @@ def main():
 
     queue = Queue.Queue(QUEUE_SIZE)
     connect_args = (opts.host, opts.port, opts.username, opts.password)
-    threads = [threading.Thread(target=worker,
-                                args=(queue, opts))]
-    for thread in threads:
+
+    for i in range(abs(opts.threads)):
+        thread = threading.Thread(target=worker,
+                                args=(queue, opts))
         thread.daemon = True
         thread.start()
 
