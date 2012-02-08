@@ -25,6 +25,7 @@ import time
 import traceback
 import ctypes
 import mc_bin_client
+import math
 
 DEFAULT_THREADS = 4
 DEFAULT_HOST = "127.0.0.1"
@@ -216,9 +217,10 @@ def main():
 
     queue = Queue.Queue(QUEUE_SIZE)
     connect_args = (opts.host, opts.port, opts.username, opts.password)
-    threads = [threading.Thread(target=worker,
-                                args=(queue, opts))]
-    for thread in threads:
+
+    for i in range(abs(opts.threads)):
+        thread = threading.Thread(target=worker,
+                                args=(queue, opts))
         thread.daemon = True
         thread.start()
 
