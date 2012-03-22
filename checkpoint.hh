@@ -324,6 +324,8 @@ public:
 
     std::list<std::string> getTAPCursorNames();
 
+    bool tapCursorExists(const std::string &name);
+
     /**
      * Start onlineupdate - stop persisting mutation to disk
      * @return :
