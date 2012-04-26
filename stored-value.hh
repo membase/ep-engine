@@ -1192,10 +1192,6 @@ public:
                 return INVALID_CAS;
             }
 
-            if (!v->isResident()) {
-                --numNonResidentItems;
-            }
-
             v->setValue(const_cast<Item&>(itm), stats, *this, true);
         }
 
