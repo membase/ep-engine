@@ -116,7 +116,7 @@ public:
     void dump(uint16_t vb, shared_ptr<Callback<GetValue> > cb);
 
     bool isKeyDumpSupported() {
-        return true;
+        return false;
     }
 
     void dumpKeys(const std::vector<uint16_t> &vbids,  shared_ptr<Callback<GetValue> > cb);
