@@ -2634,16 +2634,18 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doEngineStats(const void *cookie,
                     epstats.pendingOpsMaxDuration,
                     add_stat, cookie);
 
-    if (epstats.vbucketDeletions > 0) {
+    size_t vbDeletions = epstats.vbucketDeletions.get();
+    if (vbDeletions > 0) {
         add_casted_stat("ep_vbucket_del_max_walltime",
                         epstats.vbucketDelMaxWalltime,
                         add_stat, cookie);
         add_casted_stat("ep_vbucket_del_avg_walltime",
-                        epstats.vbucketDelTotWalltime / epstats.vbucketDeletions,
+                        epstats.vbucketDelTotWalltime / vbDeletions,
                         add_stat, cookie);
     }
 
-    if (epstats.bgNumOperations > 0) {
+    size_t numBgOps = epstats.bgNumOperations.get();
+    if (numBgOps > 0) {
         add_casted_stat("ep_bg_num_samples", epstats.bgNumOperations, add_stat, cookie);
         add_casted_stat("ep_bg_min_wait",
                         epstats.bgMinWait,
@@ -2652,7 +2654,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doEngineStats(const void *cookie,
                         epstats.bgMaxWait,
                         add_stat, cookie);
         add_casted_stat("ep_bg_wait_avg",
-                        epstats.bgWait / epstats.bgNumOperations,
+                        epstats.bgWait / numBgOps,
                         add_stat, cookie);
         add_casted_stat("ep_bg_min_load",
                         epstats.bgMinLoad,
@@ -2661,7 +2663,7 @@ ENGINE_ERROR_CODE EventuallyPersistentEngine::doEngineStats(const void *cookie,
                         epstats.bgMaxLoad,
                         add_stat, cookie);
         add_casted_stat("ep_bg_load_avg",
-                        epstats.bgLoad / epstats.bgNumOperations,
+                        epstats.bgLoad / numBgOps,
                         add_stat, cookie);
         add_casted_stat("ep_bg_wait",
                         epstats.bgWait,
