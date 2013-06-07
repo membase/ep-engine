@@ -202,7 +202,7 @@ void add_with_meta(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1, const char *key,
                    const uint32_t vb, ItemMetaData *itemMeta,
                    bool skipConflictResolution) {
     int blen = skipConflictResolution ? 28 : 24;
-    char ext[blen];
+    char *ext = new char[blen];
     encodeWithMetaExt(ext, itemMeta);
 
     if (skipConflictResolution) {
@@ -215,6 +215,7 @@ void add_with_meta(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1, const char *key,
     pkt = createPacket(CMD_ADD_WITH_META, vb, 0, ext, blen, key, keylen,
                        val, vallen);
 
+    delete[] ext;
     check(h1->unknown_command(h, NULL, pkt, add_response) == ENGINE_SUCCESS,
           "Expected to be able to store with meta");
 }
@@ -258,7 +259,7 @@ void del_with_meta(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1, const char *key,
                    ItemMetaData *itemMeta, uint64_t cas_for_delete,
                    bool skipConflictResolution) {
     int blen = skipConflictResolution ? 28 : 24;
-    char ext[blen];
+    char *ext = new char[blen];
     encodeWithMetaExt(ext, itemMeta);
 
     if (skipConflictResolution) {
@@ -270,6 +271,7 @@ void del_with_meta(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1, const char *key,
     pkt = createPacket(CMD_DEL_WITH_META, vb, cas_for_delete, ext, blen, key,
                        keylen);
 
+    delete[] ext;
     check(h1->unknown_command(h, NULL, pkt, add_response) == ENGINE_SUCCESS,
           "Expected to be able to delete with meta");
 }
@@ -498,7 +500,7 @@ void set_with_meta(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1, const char *key,
                    const uint32_t vb, ItemMetaData *itemMeta,
                    uint64_t cas_for_set, bool skipConflictResolution) {
     int blen = skipConflictResolution ? 28 : 24;
-    char ext[blen];
+    char *ext = new char[blen];
     encodeWithMetaExt(ext, itemMeta);
 
     if (skipConflictResolution) {
@@ -511,6 +513,7 @@ void set_with_meta(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1, const char *key,
     pkt = createPacket(CMD_SET_WITH_META, vb, cas_for_set, ext, blen, key, keylen,
                        val, vallen);
 
+    delete[] ext;
     check(h1->unknown_command(h, NULL, pkt, add_response) == ENGINE_SUCCESS,
           "Expected to be able to store with meta");
 }
