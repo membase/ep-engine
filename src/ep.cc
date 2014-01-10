@@ -1082,6 +1082,8 @@ void EventuallyPersistentStore::completeBGFetch(const std::string &key,
                 }
             }
         }
+    } else {
+        status = ENGINE_NOT_MY_VBUCKET;
     }
 
     lh.unlock();
