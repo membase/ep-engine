@@ -1021,6 +1021,18 @@ public:
             if (!v->isResident() && !v->isDeleted()) {
                 --numNonResidentItems;
             }
+
+            if (hasMetaData) {
+                if (itm.getSeqno() < v->getSeqno()) {
+                    LOG(EXTENSION_LOG_WARNING,
+                        "Warning: SetWithMeta tries to replace the rev_seqno %llu"
+                        " with a lower rev_seqno %llu for key ``%s''\n",
+                        v->getSeqno(), itm.getSeqno(), itm.getKey().c_str());
+                    // Don't allow us to replace the rev_seqno with a lower value.
+                    itm.setSeqno(v->getSeqno() + 1);
+                }
+            }
+
             v->setValue(itm, stats, *this, hasMetaData /*Preserve seqno*/);
             if (nru <= MAX_NRU_VALUE) {
                 v->setNRUValue(nru);
@@ -1039,14 +1051,16 @@ public:
                 v->setNRUValue(nru);
             }
 
-            /**
-             * Possibly, this item is being recreated. Conservatively assign it
-             * a seqno that is greater than the greatest seqno of all deleted
-             * items seen so far.
-             */
-            uint64_t seqno = getMaxDeletedSeqno() + 1;
-            v->setSeqno(seqno);
-            itm.setSeqno(seqno);
+            if (!hasMetaData) {
+               /**
+                * Possibly, this item is being recreated. Conservatively assign it
+                * a seqno that is greater than the greatest seqno of all deleted
+                * items seen so far.
+                */
+                uint64_t seqno = getMaxDeletedSeqno() + 1;
+                v->setSeqno(seqno);
+                itm.setSeqno(seqno);
+            }
             rv = WAS_CLEAN;
         }
         return rv;
@@ -1142,6 +1156,15 @@ public:
                                         time_t newExptime=0) {
         mutation_type_t rv = NOT_FOUND;
         if (v) {
+            if (newSeqno <= v->getSeqno()) {
+                LOG(EXTENSION_LOG_WARNING,
+                    "Warning: DeleteItem tries to replace the rev_seqno %llu"
+                    " with a lower reve_seqno %llu for key ``%s''\n",
+                    v->getSeqno(), newSeqno, v->getKey().c_str());
+                // Don't allow us to replace the rev_seqno with a lower value.
+                newSeqno = v->getSeqno() + 1;
+            }
+
             if (v->isExpired(ep_real_time()) && !use_meta) {
                 if (!v->isResident() && !v->isDeleted()) {
                     --numNonResidentItems;

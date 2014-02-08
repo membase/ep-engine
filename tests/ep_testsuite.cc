@@ -5603,6 +5603,58 @@ static enum test_result test_set_with_meta(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h
     return SUCCESS;
 }
 
+static enum test_result test_set_with_meta_by_force(ENGINE_HANDLE *h,
+                                                    ENGINE_HANDLE_V1 *h1) {
+    const char* key = "set_with_meta_key";
+    size_t keylen = strlen(key);
+    const char* val = "somevalue";
+    const char* newVal = "someothervalue";
+
+    // init some random metadata
+    ItemMetaData itm_meta;
+    itm_meta.seqno = 10;
+    itm_meta.cas = 0xdeadbeef;
+    itm_meta.exptime = 300;
+    itm_meta.flags = 0xdeadbeef;
+
+    set_with_meta(h, h1, key, keylen, val, strlen(val), 0, &itm_meta, 0, false);
+    check(last_status == PROTOCOL_BINARY_RESPONSE_SUCCESS,
+          "Expected success");
+    wait_for_flusher_to_settle(h, h1);
+
+    uint64_t cas_for_set = last_cas;
+    itm_meta.seqno = 5;
+    itm_meta.cas = 0xdeadbeee;
+    itm_meta.exptime = 400;
+    itm_meta.flags = 0xdeadbeee;
+
+    // Pass true to force SetWithMeta even if it has a lower rev_seqno.
+    // SetWithMeta will succeed, but the rev_seqno will be set to 11 instead of 5.
+    set_with_meta(h, h1, key, keylen, newVal, strlen(newVal), 0, &itm_meta,
+                  cas_for_set, true);
+    check(last_status == PROTOCOL_BINARY_RESPONSE_SUCCESS, "Expected success");
+    wait_for_flusher_to_settle(h, h1);
+
+    // Restart the engine.
+    testHarness.reload_engine(&h, &h1,
+                              testHarness.engine_path,
+                              testHarness.get_current_testcase()->cfg,
+                              true, false);
+    wait_for_warmup_complete(h, h1);
+
+    // get metadata again to verify that the warmup loads an item correctly.
+    check(get_meta(h, h1, key), "Expected to get meta");
+    check(last_status == PROTOCOL_BINARY_RESPONSE_SUCCESS, "Expected success");
+    check(last_meta.seqno == 11, "Expected seqno to match");
+    check(last_meta.cas == 0xdeadbeee, "Expected cas to match");
+    check(last_meta.flags == 0xdeadbeee, "Expected flags to match");
+
+    // check the value.
+    check_key_value(h, h1, key, newVal, strlen(newVal));
+
+    return SUCCESS;
+}
+
 static enum test_result test_set_with_meta_deleted(ENGINE_HANDLE *h, ENGINE_HANDLE_V1 *h1) {
     const char* key = "set_with_meta_key";
     size_t keylen = strlen(key);
@@ -7819,6 +7871,8 @@ engine_test_t* get_tests(void) {
                  teardown, NULL, prepare, cleanup),
         TestCase("set with meta", test_set_with_meta, test_setup,
                  teardown, NULL, prepare, cleanup),
+        TestCase("set with meta by force", test_set_with_meta_by_force,
+                 test_setup, teardown, NULL, prepare, cleanup),
         TestCase("set with meta deleted", test_set_with_meta_deleted,
                  test_setup, teardown, NULL, prepare, cleanup),
         TestCase("set with meta nonexistent", test_set_with_meta_nonexistent,

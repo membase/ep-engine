@@ -188,6 +188,14 @@ mutation_type_t HashTable::insert(Item &itm, bool eject, bool partial) {
         if (!v->isResident() && !v->isDeleted()) {
             --numNonResidentItems;
         }
+        if (itm.getSeqno() < v->getSeqno()) {
+            LOG(EXTENSION_LOG_WARNING,
+                "Warning: Warmup tries to replace the rev_seqno %llu"
+                " with a lower rev_seqno %llu for key ``%s''\n",
+                v->getSeqno(), itm.getSeqno(), itm.getKey().c_str());
+                // Simply use the same rev_seqno as memory
+                itm.setSeqno(v->getSeqno());
+        }
         v->setValue(const_cast<Item&>(itm), stats, *this, true);
     }
 

@@ -1450,6 +1450,32 @@ bool CouchKVStore::commit2couchstore(void)
     return success;
 }
 
+struct ReadDocInfoCtx {
+    ReadDocInfoCtx() { }
+
+    unordered_map<std::string, DocInfo*> keyDocInfo;
+};
+
+static int readDocInfos(Db *db, DocInfo *docinfo, void *ctx)
+{
+    assert(ctx);
+    ReadDocInfoCtx *cbCtx = static_cast<ReadDocInfoCtx *>(ctx);
+    if(docinfo) {
+        std::string key(docinfo->id.buf, docinfo->id.size);
+        unordered_map<std::string, DocInfo*>::iterator it =
+            cbCtx->keyDocInfo.find(key);
+        if (it != cbCtx->keyDocInfo.end() &&
+            it->second->rev_seq <= docinfo->rev_seq) {
+            LOG(EXTENSION_LOG_WARNING,
+                "Warning: Batch commit tries to replace a rev_seqno %llu with "
+                "a lower rev_seqno %llu for key ``%s''",
+                docinfo->rev_seq, it->second->rev_seq, key.c_str());
+            it->second->rev_seq = docinfo->rev_seq + 1;
+        }
+    }
+    return 0;
+}
+
 couchstore_error_t CouchKVStore::saveDocs(uint16_t vbid, uint64_t rev, Doc **docs,
                                           DocInfo **docinfos, int docCount)
 {
@@ -1490,6 +1516,20 @@ couchstore_error_t CouchKVStore::saveDocs(uint16_t vbid, uint64_t rev, Doc **doc
                     }
                 }
             }
+
+            // Make sure that every dirty item has a higher rev_seqno than
+            // the one in the underlying storage engine.
+            ReadDocInfoCtx ctx;
+            sized_buf *ids = new sized_buf[docCount];
+            for (int idx = 0; idx < docCount; ++idx) {
+                ids[idx] = docinfos[idx]->id;
+                std::string key(ids[idx].buf, ids[idx].size);
+                ctx.keyDocInfo[key] = docinfos[idx];
+            }
+            couchstore_docinfos_by_id(db, ids, (unsigned) docCount, 0,
+                                      readDocInfos, &ctx);
+            ctx.keyDocInfo.clear();
+            delete ids;
 
             hrtime_t cs_begin = gethrtime();
             errCode = couchstore_save_documents(db, docs, docinfos, docCount,
