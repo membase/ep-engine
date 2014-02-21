@@ -1404,14 +1404,13 @@ GetValue EventuallyPersistentStore::getAndUpdateTtl(const std::string &key,
         }
         bool exptime_mutated = exptime != v->getExptime() ? true : false;
         if (exptime_mutated) {
+           v->setExptime(exptime);
            v->markDirty();
         }
-        v->setExptime(exptime);
-
-        GetValue rv(v->toItem(v->isLocked(ep_current_time()), vbucket),
-                    ENGINE_SUCCESS, v->getId());
 
         if (v->isResident()) {
+            GetValue rv(v->toItem(v->isLocked(ep_current_time()), vbucket),
+                        ENGINE_SUCCESS, v->getId());
             if (exptime_mutated) {
                 // persist the itme in the underlying storage for
                 // mutated exptime
@@ -1419,6 +1418,7 @@ GetValue EventuallyPersistentStore::getAndUpdateTtl(const std::string &key,
                 lh.unlock();
                 queueDirty(vb, key, vbucket, queue_op_set, revSeqno);
             }
+            return rv;
         } else {
             if (queueBG || exptime_mutated) {
                 // in case exptime_mutated, first do bgFetch then
@@ -1426,12 +1426,12 @@ GetValue EventuallyPersistentStore::getAndUpdateTtl(const std::string &key,
                 bgFetch(key, vbucket, v->getId(), cookie);
                 return GetValue(NULL, ENGINE_EWOULDBLOCK, v->getId());
             } else {
-                // You didn't want the item anyway...
-                return GetValue(NULL, ENGINE_SUCCESS, v->getId());
+                // As we still need to return the metadata to the client, we
+                // should create an item instance.
+                return GetValue(v->toItem(v->isLocked(ep_current_time()), vbucket),
+                                ENGINE_SUCCESS, v->getId());
             }
         }
-
-        return rv;
     } else {
         GetValue rv;
         return rv;
