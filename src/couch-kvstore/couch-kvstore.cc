@@ -1306,7 +1306,7 @@ couchstore_error_t CouchKVStore::fetchDoc(Db *db, DocInfo *docinfo,
                 void *valuePtr = doc->data.buf;
                 Item *it = new Item(docinfo->id.buf, (size_t)docinfo->id.size,
                                     itemFlags, (time_t)exptime, valuePtr, valuelen,
-                                    cas, -1, vbId);
+                                    cas, -1, vbId, docinfo->rev_seq);
                 docValue = GetValue(it);
 
                 // update ep-engine IO stats
