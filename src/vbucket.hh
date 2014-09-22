@@ -144,7 +144,9 @@ public:
         stats.decrDiskQueueSize(dirtyQueueSize.get());
         stats.numRemainingBgJobs.decr(pendingBGFetches.size());
         while(!pendingBGFetches.empty()) {
-            delete pendingBGFetches.front();
+            VBucketBGFetchItem* bgItem = pendingBGFetches.front();
+            bgItem->delValue();
+            delete bgItem;
             pendingBGFetches.pop();
         }
         stats.memOverhead.decr(sizeof(VBucket) + ht.memorySize() + sizeof(CheckpointManager));
