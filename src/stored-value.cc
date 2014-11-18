@@ -459,6 +459,13 @@ add_type_t HashTable::unlocked_add(int &bucket_num,
         }
         if (v) {
             rv = (v->isDeleted() || v->isExpired(ep_real_time())) ? ADD_UNDEL : ADD_SUCCESS;
+
+            if (v->isTempItem()) {
+                v->clearId();
+                --numTempItems;
+                ++numItems;
+            }
+
             v->setValue(itm, stats, *this, false);
             if (isDirty) {
                 v->markDirty();
