@@ -1644,7 +1644,7 @@ ENGINE_ERROR_CODE EventuallyPersistentStore::getKeyStats(const std::string &key,
     LockHolder lh = vb->ht.getLockedBucket(key, &bucket_num);
     StoredValue *v = fetchValidValue(vb, key, bucket_num, wantsDeleted);
 
-    if (v) {
+    if (v && !v->isTempItem()) {
         kstats.logically_deleted = v->isDeleted();
         kstats.dirty = v->isDirty();
         kstats.exptime = v->getExptime();
