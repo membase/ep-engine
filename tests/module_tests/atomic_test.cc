@@ -62,17 +62,6 @@ static void testAtomicInt() {
     cb_assert(intgen.latest() == (numThreads * numIterations));
 }
 
-static void testAtomicUint64() {
-    // Check that we can correctly load / store from values larger than 32bits.
-    AtomicValue<uint64_t> value;
-    uint64_t expected_val = 1ul << 33;
-    value.store(expected_val);
-    cb_assert(value == expected_val);
-
-    value.store(0);
-    cb_assert(value == 0);
-}
-
 static void testSetIfLess() {
     AtomicValue<int> x;
 
@@ -133,7 +122,6 @@ int testAtomicCompareExchangeStrong(void) {
 int main() {
     alarm(60);
     testAtomicInt();
-    testAtomicUint64();
     testSetIfLess();
     testSetIfBigger();
     return testAtomicCompareExchangeStrong();
